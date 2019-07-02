@@ -2,6 +2,7 @@ Prerequisites
 -------------
 
 [VirtualBox](https://www.virtualbox.org/)
+
 Vagrant plugin [Hostmanager](https://github.com/devopsgroup-io/vagrant-hostmanager) 
 
     $ vagrant plugin install vagrant-hostmanager
