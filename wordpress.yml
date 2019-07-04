@@ -6,15 +6,14 @@
   - name: updating repo on all hosts
     apt: 
       update_cache: true
+  # tasks: 
+  #   shell: whoami
+  #   register: whoamivar
 
 - hosts: webserver
   become: yes
   # become_user: "{{ ansible_system_user }}"
   # become_method: sudo
-  
-  # tasks: 
-  #   shell: whoami
-  #   register: whoamivar
   roles:
     - role: nginx
 
@@ -36,21 +35,24 @@
   - name: Reconfigure PHP listener IP and port
     replace:
       path: /etc/php/7.2/fpm/pool.d/www.conf
-      regexp: 'listen = /run/php/php7.2-fpm.sock' # myst be regexp for changing params from any listener to new config
+      regexp: 'listen = /run/php/php7.2-fpm.sock' # must be regexp for changing params from any listener to new config
       replace: 'listen = 192.168.56.99:9000'
+      notice: Restart PHP
   - name: Reconfigure PHP allowed client IP
     replace:
       path: /etc/php/7.2/fpm/pool.d/www.conf
       regexp: ';listen.allowed_clients ='
       replace: 'listen.allowed_clients = 192.168.56.10,'
-  - name: Restart php-fpm
-    service: 
-      name: php7.2-fpm
-      state: restarted
+      notify: Restart PHP
   - name: 
     git:
       repo: https://github.com/WordPress/WordPress.git
       dest: /var/www/wrdprs.loc
+  handlers:
+  - name: Restart PHP
+    service: 
+      name: php7.2-fpm
+      state: restarted
 
 - hosts: webserver
   tasks:
@@ -61,7 +63,9 @@
       owner=root
       group=root
       mode=0644
-  - name: Restart nginx
+    notify: Restart Nginx
+  handlers:
+  - name: Restart Nginx
     service: 
       name: nginx
       state: restarted
