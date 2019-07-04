@@ -1,0 +1,105 @@
+---
+
+- hosts: all
+  become: yes
+  tasks:
+  - name: updating repo on all hosts
+    apt: 
+      update_cache: true
+
+- hosts: webserver
+  become: yes
+  # become_user: "{{ ansible_system_user }}"
+  # become_method: sudo
+  
+  # tasks: 
+  #   shell: whoami
+  #   register: whoamivar
+  roles:
+    - role: nginx
+
+- hosts: database
+  become: yes
+  roles:
+    - role: mysql
+
+- hosts: phpserver
+  become: yes
+  roles:
+    - role: php_fpm
+
+## Now we configuring our servers for our WORDPRESS needs 
+
+- hosts: phpserver
+  become: yes
+  tasks:
+  - name: Reconfigure PHP listener IP and port
+    replace:
+      path: /etc/php/7.2/fpm/pool.d/www.conf
+      regexp: 'listen = /run/php/php7.2-fpm.sock' # myst be regexp for changing params from any listener to new config
+      replace: 'listen = 192.168.56.99:9000'
+  - name: Reconfigure PHP allowed client IP
+    replace:
+      path: /etc/php/7.2/fpm/pool.d/www.conf
+      regexp: ';listen.allowed_clients ='
+      replace: 'listen.allowed_clients = 192.168.56.10,'
+  - name: Restart php-fpm
+    service: 
+      name: php7.2-fpm
+      state: restarted
+  - name: 
+    git:
+      repo: https://github.com/WordPress/WordPress.git
+      dest: /var/www/wrdprs.loc
+
+- hosts: webserver
+  tasks:
+  - name: Copy wordpress conf file
+    copy:
+      src=wrdprs.conf
+      dest=/etc/nginx/conf.d/
+      owner=root
+      group=root
+      mode=0644
+  - name: Restart nginx
+    service: 
+      name: nginx
+      state: restarted
+
+- hosts: database
+  tasks:
+  - name: create wordpress database
+    mysql_db:
+      name: wordpress
+      state: present
+  - name: generate Mysql root password
+    shell: < /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-16};echo;
+    register: root_passwd
+    run_once: true
+  - set_fact:
+      my_root_pass: "{{ root_passwd.stdout }}"
+  - debug: 
+      msg: "{{ my_root_pass }}"
+  - name: generate Mysql wordpress password
+    shell: < /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-16};echo;
+    register: wp_passwd
+    run_once: true
+  - set_fact:
+      wp_db_pass: "{{ wp_passwd.stdout }}"
+  - debug: 
+      msg: "{{ wp_db_pass }}"
+  - name: Creating db user for wordpress
+    mysql_user:
+      name: wordpress_user
+      password: "{{ wp_db_pass }}"
+      priv: 'wordpress.*:ALL'
+      state: present
+
+
+# - hosts: php_fpm
+#   become: yes
+#   remote_user: "{{ ansible_system_user }}"
+#   vars_files:
+#     - group_vars/all.yml
+#   roles:
+#     - { role: mysql }

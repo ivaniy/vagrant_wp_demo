@@ -1,0 +1,14 @@
+[web_db]
+webserver ansible_host=192.168.56.10 ansible_ssh_private_key_file=/home/idoly/vagrant-homework/.vagrant/machines/nginx/virtualbox/private_key
+database ansible_host=192.168.56.20 ansible_ssh_private_key_file=/home/idoly/vagrant-homework/.vagrant/machines/mysql/virtualbox/private_key
+
+[php]
+phpserver ansible_host=192.168.56.30 ansible_ssh_private_key_file=/home/idoly/vagrant-homework/.vagrant/machines/php_fpm/virtualbox/private_key
+
+[all_my_hosts:children]
+web_db
+php
+
+
+[all_my_hosts:vars]
+ansible_user=vagrant
