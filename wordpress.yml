@@ -1,14 +1,14 @@
 ---
 
+## Installing Necsessary software on our target machines 
+
 - hosts: all
   become: yes
   tasks:
   - name: updating repo on all hosts
     apt: 
       update_cache: true
-  # tasks: 
-  #   shell: whoami
-  #   register: whoamivar
+      force_apt_get: yes
 
 - hosts: webserver
   become: yes
@@ -32,22 +32,25 @@
 - hosts: phpserver
   become: yes
   tasks:
-  - name: Reconfigure PHP listener IP and port
-    replace:
-      path: /etc/php/7.2/fpm/pool.d/www.conf
-      regexp: 'listen = /run/php/php7.2-fpm.sock' # must be regexp for changing params from any listener to new config
-      replace: 'listen = 192.168.56.99:9000'
-      notice: Restart PHP
-  - name: Reconfigure PHP allowed client IP
-    replace:
-      path: /etc/php/7.2/fpm/pool.d/www.conf
-      regexp: ';listen.allowed_clients ='
-      replace: 'listen.allowed_clients = 192.168.56.10,'
+  - name: Configure PHP files
+    block: ## @@@ reconfigure PHP @@@ ##
+    - name: Reconfigure PHP listener IP and port
+      replace:
+        path: /etc/php/7.2/fpm/pool.d/www.conf
+        regexp: 'listen = /run/php/php7.2-fpm.sock' # must be regexp for changing params from any listener to new config
+        replace: 'listen = 192.168.56.30:9000'
       notify: Restart PHP
-  - name: 
+    - name: Reconfigure PHP allowed client IP
+      replace:
+        path: /etc/php/7.2/fpm/pool.d/www.conf
+        regexp: ';listen.allowed_clients ='
+        replace: 'listen.allowed_clients = 192.168.56.10,'
+      notify: Restart PHP
+    - meta: flush_handlers
+  - name: Clone Wordpress source
     git:
-      repo: https://github.com/WordPress/WordPress.git
-      dest: /var/www/wrdprs.loc
+     repo: https://github.com/WordPress/WordPress.git
+     dest: /var/www/wrdprs.loc
   handlers:
   - name: Restart PHP
     service: 
@@ -55,6 +58,7 @@
       state: restarted
 
 - hosts: webserver
+  become: yes
   tasks:
   - name: Copy wordpress conf file
     copy:
@@ -71,19 +75,13 @@
       state: restarted
 
 - hosts: database
+  become: yes
   tasks:
-  - name: create wordpress database
-    mysql_db:
-      name: wordpress
-      state: present
-  - name: generate Mysql root password
-    shell: < /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-16};echo;
-    register: root_passwd
-    run_once: true
-  - set_fact:
-      my_root_pass: "{{ root_passwd.stdout }}"
-  - debug: 
-      msg: "{{ my_root_pass }}"
+  # - name: create wordpress database
+  #   mysql_db:
+  #     name: wordpress
+  #     state: present
+
   - name: generate Mysql wordpress password
     shell: < /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-16};echo;
     register: wp_passwd
@@ -92,12 +90,12 @@
       wp_db_pass: "{{ wp_passwd.stdout }}"
   - debug: 
       msg: "{{ wp_db_pass }}"
-  - name: Creating db user for wordpress
-    mysql_user:
-      name: wordpress_user
-      password: "{{ wp_db_pass }}"
-      priv: 'wordpress.*:ALL'
-      state: present
+  # - name: Creating db user for wordpress
+  #   mysql_user:
+  #     name: wordpress_user
+  #     password: "{{ wp_db_pass }}"
+  #     priv: 'wordpress.*:ALL'
+  #     state: present
 
 
 # - hosts: php_fpm

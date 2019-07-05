@@ -1,2 +1,3 @@
 ansible_user : vagrant
+ansible_ssh_user : vagrant
 some_var     : Some value 
