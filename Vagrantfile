@@ -1,7 +1,13 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
+php_ip = "192.168.56.30"
+mysql_ip = "192.168.56.20" 
+nginx_ip = "192.168.56.10"
+
+
 Vagrant.configure("2") do |config|
+
 
   config.vm.box = "ubuntu/bionic64"
   config.hostmanager.enabled = true
@@ -17,24 +23,48 @@ Vagrant.configure("2") do |config|
     # nginx.vm.provision "file", source: "./wrdprs.conf", destination: "$HOME/"
     # nginx.vm.provision "shell", path: "nginx_cfg.sh", privileged: false
     nginx.vm.synced_folder "./wrdprs.loc", "/var/www/wrdprs.loc", :mount_options => ["dmode=777", "fmode=666"]
-    nginx.vm.network "private_network", ip: "192.168.56.10"
+    nginx.vm.network "private_network", ip: nginx_ip
     nginx.hostmanager.aliases = %w(wrdprs.loc)
   end
   
   config.vm.define "php_fpm" do |php_fpm|
     # php_fpm.vm.provision "shell", path: "php_cfg.sh"
     php_fpm.vm.synced_folder "./wrdprs.loc", "/var/www/wrdprs.loc", :mount_options => ["dmode=777", "fmode=666"]
-    php_fpm.vm.network "private_network", ip: "192.168.56.30"
+    php_fpm.vm.network "private_network", ip: php_ip
   end   
   
   config.vm.define "mysql" do |mysql|
     # Adding vagrant generated private key for ssh access to php from mysql 
     # mysql.vm.provision "file", source: ".vagrant/machines/php_fpm/virtualbox/private_key", destination: "~/.ssh/id_rsa"
     # mysql.vm.provision "shell", path: "mysql_cfg.sh"
-    mysql.vm.network "private_network", ip: "192.168.56.20"
+    mysql.vm.provision "shell", inline: "sudo apt-get -y install  python-pymysql"
+    mysql.vm.network "private_network", ip: mysql_ip
+    mysql.vm.provision "ansible" do |ansible|
+      ansible.playbook = "wordpress.yml"
+      ansible.host_vars = {
+        "php_fpm" => { "ansible_host" => php_ip, 
+                      "ansible_port" => 22,
+                      "nasible_ssh_user" => 'vagerant' },
+        "mysql" => { "ansible_host" => mysql_ip, 
+                    "ansible_port" => 22 ,
+                    "nasible_ssh_user" => 'vagerant'},
+        "nginx" => { "ansible_host" => nginx_ip, 
+                    "ansible_port" => 22,
+                    "nasible_ssh_user" => 'vagerant' }
+      }
+      ansible.groups = {
+        "phpserver" => ['php_fpm'],
+        "webserver" => ['nginx'],
+        "database" => ['mysql'],
+        "all:vars" => {'php_ip'=>php_ip,
+                      'mysql_ip'=>mysql_ip,
+                      'nginx_ip'=>nginx_ip}
+      }
+      ansible.verbose = true
+      ansible.limit = "all"
+      ansible.version = "latest"
+    end
   end
-  
-
 
   # config.vm.box_check_update = false
   # config.vm.network "forwarded_port", guest: 80, host: 8080

@@ -4,32 +4,31 @@
 
 - hosts: all
   become: yes
-  tasks:
-  - name: updating repo on all hosts
-    apt: 
-      update_cache: true
-      force_apt_get: yes
+  tasks: 
+  - apt:
+      name: python
+      state: present
 
-- hosts: webserver
+- hosts: nginx
   become: yes
   # become_user: "{{ ansible_system_user }}"
   # become_method: sudo
   roles:
     - role: nginx
-
-- hosts: database
+  
+- hosts: mysql
   become: yes
   roles:
     - role: mysql
 
-- hosts: phpserver
+- hosts: php_fpm
   become: yes
   roles:
     - role: php_fpm
 
 ## Now we configuring our servers for our WORDPRESS needs 
 
-- hosts: phpserver
+- hosts: php_fpm
   become: yes
   tasks:
   - name: Configure PHP files
@@ -37,14 +36,14 @@
     - name: Reconfigure PHP listener IP and port
       replace:
         path: /etc/php/7.2/fpm/pool.d/www.conf
-        regexp: 'listen = /run/php/php7.2-fpm.sock' # must be regexp for changing params from any listener to new config
-        replace: 'listen = 192.168.56.30:9000'
+        regexp: '/run/php/php7.2-fpm.sock' # must be regexp for changing params from any listener to new config
+        replace: "{{ php_ip }}:9000"
       notify: Restart PHP
     - name: Reconfigure PHP allowed client IP
       replace:
         path: /etc/php/7.2/fpm/pool.d/www.conf
         regexp: ';listen.allowed_clients ='
-        replace: 'listen.allowed_clients = 192.168.56.10,'
+        replace: "listen.allowed_clients = {{nginx_ip}},"
       notify: Restart PHP
     - meta: flush_handlers
   - name: Clone Wordpress source
@@ -57,7 +56,7 @@
       name: php7.2-fpm
       state: restarted
 
-- hosts: webserver
+- hosts: nginx
   become: yes
   tasks:
   - name: Copy wordpress conf file
@@ -74,14 +73,9 @@
       name: nginx
       state: restarted
 
-- hosts: database
+- hosts: mysql
   become: yes
   tasks:
-  # - name: create wordpress database
-  #   mysql_db:
-  #     name: wordpress
-  #     state: present
-
   - name: generate Mysql wordpress password
     shell: < /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-16};echo;
     register: wp_passwd
@@ -90,13 +84,76 @@
       wp_db_pass: "{{ wp_passwd.stdout }}"
   - debug: 
       msg: "{{ wp_db_pass }}"
-  # - name: Creating db user for wordpress
-  #   mysql_user:
-  #     name: wordpress_user
-  #     password: "{{ wp_db_pass }}"
-  #     priv: 'wordpress.*:ALL'
-  #     state: present
-
+  - debug: 
+      msg: "{{ my_root_pass }}"
+  - name: create wordpress database
+    mysql_db:
+      name: wordpress
+      login_user: root
+      login_password: "{{ my_root_pass }}"
+      state: present
+    ignore_errors: yes
+  - name: Add Wordpress User
+    mysql_user:
+      name: wordpress_user
+      login_user: root
+      login_password: "{{ my_root_pass }}"
+      password: "{{ wp_db_pass }}"
+      state: present
+      priv: 'wordpress.*:ALL'
+      update_password: on_create
+      host: 192.168.56.30
+    become: yes
+    ignore_errors: yes
+  - name: Reconfigure database listening IP
+    replace:
+      regexp: '127.0.0.1'
+      replace: "{{ mysql_ip }}" 
+      path: /etc/mysql/mysql.conf.d/mysqld.cnf
+    notify: reboot mysql
+  - name: get info about wp-config
+    stat:
+      path: /var/www/wrdprs.loc/wp-config.php
+    register: st
+    delegate_to: php_fpm
+  - name: configure wp-config
+    block: 
+      - name: copy config file
+        copy: 
+          src: /var/www/wrdprs.loc/wp-config-sample.php
+          dest: /var/www/wrdprs.loc/wp-config.php
+          remote_src: yes
+        delegate_to: php_fpm      
+      - name: db name
+        replace: 
+          regexp: 'database_name_here'
+          replace: 'wordpress' 
+          path: /var/www/wrdprs.loc/wp-config.php
+        delegate_to: php_fpm
+      - name: db login
+        replace: 
+          regexp: 'username_here'
+          replace: 'wordpress_user' 
+          path: /var/www/wrdprs.loc/wp-config.php
+        delegate_to: php_fpm
+      - name: db pass
+        replace: 
+          regexp: 'password_here'
+          replace: "{{ wp_db_pass }}" 
+          path: /var/www/wrdprs.loc/wp-config.php
+        delegate_to: php_fpm
+      - name: db host
+        replace: 
+          regexp: 'localhost'
+          replace: "{{mysql_ip}}"
+          path: /var/www/wrdprs.loc/wp-config.php
+        delegate_to: php_fpm
+    when: st.stat.exists == false
+  handlers:
+  - name: reboot mysql
+    service: 
+      name: mysql
+      state: restarted 
 
 # - hosts: php_fpm
 #   become: yes

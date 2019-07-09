@@ -1,0 +1,11 @@
+- src: https://github.com/ivaniy/ansible-role-nginx
+  version: master
+  name: nginx
+  
+- src: https://github.com/ivaniy/ansible-role-php_fpm
+  version: master
+  name: php_fpm
+
+- src: https://github.com/ivaniy/ansible-role-mysql
+  version: master
+  name: mysql
